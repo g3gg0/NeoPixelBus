@@ -78,12 +78,12 @@ extern "C"
 // used when an externally sized and managed memory for the buffers is used
 NeoPixelBus::NeoPixelBus(uint16_t n, uint8_t p, uint8_t t, uint8_t* pixelBuf, uint8_t* bitBuf) : 
     _countPixels(n), 
-    _sizePixels(n * 3), 
+    _sizePixels(n * colorChannels(t)), 
     _flagsPixels(t),
     _pixels(pixelBuf),
     _i2sBlock(bitBuf)
 {
-    _bitBufferSize = NeoPixelBus::CalculateI2sBufferSize(_countPixels);
+    _bitBufferSize = NeoPixelBus::CalculateI2sBufferSize(_countPixels * colorChannels(_flagsPixels));
     
     if (_pixels)
     {
@@ -94,10 +94,10 @@ NeoPixelBus::NeoPixelBus(uint16_t n, uint8_t p, uint8_t t, uint8_t* pixelBuf, ui
 
 NeoPixelBus::NeoPixelBus(uint16_t n, uint8_t p, uint8_t t) : 
     _countPixels(n), 
-    _sizePixels(n * 3), 
+    _sizePixels(n * colorChannels(t)), 
     _flagsPixels(t)
 {
-    _bitBufferSize = NeoPixelBus::CalculateI2sBufferSize(_countPixels);
+    _bitBufferSize = NeoPixelBus::CalculateI2sBufferSize(_countPixels * colorChannels(_flagsPixels));
 
     _pixels = (uint8_t *)malloc(_sizePixels);
     _i2sBlock = (uint8_t *)malloc(_bitBufferSize);
@@ -294,19 +294,20 @@ void NeoPixelBus::SetPixelColor(
     uint16_t n, 
     uint8_t r, 
     uint8_t g, 
-    uint8_t b) 
+    uint8_t b, 
+    uint8_t w) 
 {
     if (n < _countPixels) 
     {
-        UpdatePixelColor(n, r, g, b);
+        UpdatePixelColor(n, r, g, b, w);
     }
 }
 
-void NeoPixelBus::ClearTo(uint8_t r, uint8_t g, uint8_t b)
+void NeoPixelBus::ClearTo(uint8_t r, uint8_t g, uint8_t b, uint8_t w)
 {
     for (uint16_t n = 0; n < _countPixels; n++)
     {
-        UpdatePixelColor(n, r, g, b);
+        UpdatePixelColor(n, r, g, b, w);
     }
 }
 
@@ -315,63 +316,74 @@ void NeoPixelBus::UpdatePixelColor(
     uint16_t n, 
     uint8_t r, 
     uint8_t g, 
-    uint8_t b) 
+    uint8_t b,
+    uint8_t w) 
 {
     Dirty();
 
-    uint8_t *p = &_pixels[n * 3];
+    uint8_t *p = &_pixels[n * colorChannels()];
 
     uint8_t colorOrder = (_flagsPixels & NEO_COLMASK);
     if (colorOrder == NEO_GRB)
     {
         *p++ = g;
         *p++ = r;
-        *p = b;
+        *p++ = b;
     } 
     else if (colorOrder == NEO_RGB)
     {
         *p++ = r;
         *p++ = g;
-        *p = b;
+        *p++ = b;
     }
     else
     {
         *p++ = b;
         *p++ = r;
-        *p = g;
+        *p++ = g;
+    }
+    
+    if(colorChannels() == 4)
+    {
+        *p = w;
     }
 }
 
 // Query color from previously-set pixel (returns packed 32-bit RGB value)
-RgbColor NeoPixelBus::GetPixelColor(uint16_t n) const 
+RgbwColor NeoPixelBus::GetPixelColor(uint16_t n) const 
 {
     if (n < _countPixels) 
     {
-        RgbColor c;
-        uint8_t *p = &_pixels[n * 3];
+        RgbwColor c;
+        uint8_t *p = &_pixels[n * colorChannels()];
 
         uint8_t colorOrder = (_flagsPixels & NEO_COLMASK);
         if (colorOrder == NEO_GRB)
         {
             c.G = *p++;
             c.R = *p++;
-            c.B = *p;
+            c.B = *p++;
         }
         else if (colorOrder == NEO_RGB)
         {
             c.R = *p++;
             c.G = *p++;
-            c.B = *p;
+            c.B = *p++;
         }
         else 
         {
             c.B = *p++;
             c.R = *p++;
-            c.G = *p;
+            c.G = *p++;
+        }
+        
+        if(colorChannels() == 4)
+        {
+            c.W = *p;
         }
         
         return c;
     }
 
-    return RgbColor(0); // Pixel # is out of bounds
+    return RgbwColor(0); // Pixel # is out of bounds
 }

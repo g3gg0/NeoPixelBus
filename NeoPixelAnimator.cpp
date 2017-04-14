@@ -73,14 +73,14 @@ void NeoPixelAnimator::StopAnimation(uint16_t n)
     }
 }
 
-void NeoPixelAnimator::FadeTo(uint16_t time, RgbColor color)
+void NeoPixelAnimator::FadeTo(uint16_t time, RgbwColor color)
 {
     for (uint16_t n = 0; n < _bus->PixelCount(); n++)
     {
-        RgbColor original = _bus->GetPixelColor(n);
+        RgbwColor original = _bus->GetPixelColor(n);
         AnimUpdateCallback animUpdate = [=](float progress)
         {
-            RgbColor updatedColor = RgbColor::LinearBlend(original, color, progress);
+            RgbwColor updatedColor = RgbwColor::LinearBlend(original, color, progress);
             _bus->SetPixelColor(n, updatedColor);
         };
         StartAnimation(n, time, animUpdate);

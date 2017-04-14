@@ -26,6 +26,7 @@ enum ColorType
 };
 
 #include "RgbColor.h"
+#include "RgbwColor.h"
 #include "HslColor.h"
 #include "HsbColor.h"
 #include "NeoPixelAnimator.h"
@@ -34,7 +35,11 @@ enum ColorType
 #define NEO_RGB     0x00 // Wired for RGB data order
 #define NEO_GRB     0x01 // Wired for GRB data order
 #define NEO_BRG     0x04
+#define NEO_RGBW    (NEO_RGB | NEO_WHITEMASK)
+#define NEO_GRBW    (NEO_GRB | NEO_WHITEMASK)
+#define NEO_BRGW    (NEO_BRG | NEO_WHITEMASK)
 #define NEO_COLMASK 0x05
+#define NEO_WHITEMASK 0x08
 
 #define NEO_KHZ400  0x10 // 400 KHz datastream
 #define NEO_KHZ800  0x00 // 800 KHz datastream (default)
@@ -84,10 +89,15 @@ public:
         return true;
     };
 
-    void ClearTo(uint8_t r, uint8_t g, uint8_t b);
-    void ClearTo(RgbColor c)
+    void ClearTo(uint8_t r, uint8_t g, uint8_t b, uint8_t w);
+    void ClearTo(uint8_t r, uint8_t g, uint8_t b)
     {
-        ClearTo(c.R, c.G, c.B);
+        ClearTo(r, g, b, 0);
+    }
+    
+    void ClearTo(RgbwColor c)
+    {
+        ClearTo(c.R, c.G, c.B, c.W);
     };
 
     bool IsExternalMemory() const
@@ -135,20 +145,33 @@ public:
         return _countPixels;
     };
 
-    void SetPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b);
-    void SetPixelColor(uint16_t n, RgbColor c)
+    uint16_t colorChannels() const
     {
-        SetPixelColor(n, c.R, c.G, c.B);
+        return (_flagsPixels & NEO_WHITEMASK) ? 4 : 3;
+    };
+    static uint16_t colorChannels(uint8_t flags)
+    {
+        return (flags & NEO_WHITEMASK) ? 4 : 3;
     };
 
-    RgbColor GetPixelColor(uint16_t n) const;
+    void SetPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b, uint8_t w);
+    void SetPixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b)
+    {
+        SetPixelColor(n, r, g, b, 0);
+    };
+    void SetPixelColor(uint16_t n, RgbwColor c)
+    {
+        SetPixelColor(n, c.R, c.G, c.B, c.W);
+    };
+
+    RgbwColor GetPixelColor(uint16_t n) const;
     void SyncWait(void);
     void FillBuffers(void);
 
     /* 24 bit per LED, 3 I2S bits per databit, and of that the byte count */
-    static uint32_t CalculateI2sBufferSize(uint16_t pixelCount)
+    static uint32_t CalculateI2sBufferSize(uint16_t pixelChannelCount)
     {
-        return ((uint32_t)pixelCount * 24 * 4 + 7) / 8;
+        return (pixelChannelCount * 8 * 4 + 7) / 8;
     }
 
 private:
@@ -157,13 +180,17 @@ private:
     struct slc_queue_item _i2sBufDescLatch;
 
     uint32_t _bitBufferSize;
-    uint8_t _i2sZeroes[24]; // 24 buytes creates the minimum 50us latch per spec
+    uint8_t _i2sZeroes[24]; // 24 bytes creates the minimum 50us latch per spec
     uint8_t* _i2sBlock;
 
     friend NeoPixelAnimator;
 
-    void UpdatePixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b);
-    void UpdatePixelColor(uint16_t n, RgbColor c)
+    void UpdatePixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b, uint8_t W);
+    void UpdatePixelColor(uint16_t n, uint8_t r, uint8_t g, uint8_t b)
+    {
+        UpdatePixelColor(r, g, b, 0);
+    };
+    void UpdatePixelColor(uint16_t n, RgbwColor c)
     {
         UpdatePixelColor(n, c.R, c.G, c.B);
     };

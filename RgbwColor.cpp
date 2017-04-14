@@ -38,7 +38,7 @@ static float _CalcColor(float p, float q, float t)
     return p;
 }
 
-RgbColor::RgbColor(HslColor color)
+RgbwColor::RgbwColor(HslColor color)
 {
     //Serial.print("HSL to RGB : ");
     //Serial.print(color.H);
@@ -84,6 +84,7 @@ RgbColor::RgbColor(HslColor color)
     R = (uint8_t)(r * 255.0f);
     G = (uint8_t)(g * 255.0f);
     B = (uint8_t)(b * 255.0f);
+    W = (uint8_t)((r+g+b) / 3.0f * 255.0f);
 
     //Serial.print(R);
     //Serial.print(", ");
@@ -93,7 +94,7 @@ RgbColor::RgbColor(HslColor color)
     //Serial.println();
 }
 
-RgbColor::RgbColor(HsbColor color)
+RgbwColor::RgbwColor(HsbColor color)
 {
     //Serial.print("HSB to RGB : ");
     //Serial.print(color.H);
@@ -177,6 +178,7 @@ RgbColor::RgbColor(HsbColor color)
     R = (uint8_t)(r * 255.0f);
     G = (uint8_t)(g * 255.0f);
     B = (uint8_t)(b * 255.0f);
+    W = (uint8_t)((r+g+b) / 3.0f * 255.0f);
 
     //Serial.print(R);
     //Serial.print(", ");
@@ -186,12 +188,12 @@ RgbColor::RgbColor(HsbColor color)
     //Serial.println();
 }
 
-uint8_t RgbColor::CalculateBrightness() const
+uint8_t RgbwColor::CalculateBrightness() const
 {
-	return (uint8_t)(((uint16_t)R + (uint16_t)G + (uint16_t)B) / 3);
+	return (uint8_t)(((uint16_t)R + (uint16_t)G + (uint16_t)B + (uint16_t)W) / 4);
 }
 
-void RgbColor::Darken(uint8_t delta)
+void RgbwColor::Darken(uint8_t delta)
 {
 	if (R > delta)
 	{
@@ -219,9 +221,18 @@ void RgbColor::Darken(uint8_t delta)
 	{
 		B = 0;
 	}
+
+	if (W > delta)
+	{
+		W -= delta;
+	}
+	else
+	{
+		W = 0;
+	}
 }
 
-void RgbColor::Lighten(uint8_t delta)
+void RgbwColor::Lighten(uint8_t delta)
 {
 	if (R < 255 - delta)
 	{
@@ -249,11 +260,21 @@ void RgbColor::Lighten(uint8_t delta)
 	{
 		B = 255;
 	}
+
+	if (W < 255 - delta)
+	{
+		W += delta;
+	}
+	else
+	{
+		W = 255;
+	}
 }
 
-RgbColor RgbColor::LinearBlend(RgbColor left, RgbColor right, float progress)
+RgbwColor RgbwColor::LinearBlend(RgbwColor left, RgbwColor right, float progress)
 {
-	return RgbColor( left.R + ((right.R - left.R) * progress),
+	return RgbwColor( left.R + ((right.R - left.R) * progress),
 		left.G + ((right.G - left.G) * progress),
-		left.B + ((right.B - left.B) * progress));
+		left.B + ((right.B - left.B) * progress),
+		left.W + ((right.W - left.W) * progress));
 }

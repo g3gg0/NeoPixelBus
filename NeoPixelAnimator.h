@@ -59,7 +59,7 @@ public:
         _animationLastTick = millis();
     }
 
-    void FadeTo(uint16_t time, RgbColor color);
+    void FadeTo(uint16_t time, RgbwColor color);
 
 private:
     NeoPixelBus* _bus;
