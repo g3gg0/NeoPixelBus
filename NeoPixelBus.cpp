@@ -40,7 +40,9 @@ License along with NeoPixel.  If not, see
 /* Do not use interrupts if you e.g. want to use SPIFFS also. The rom calls will crash if the interrupt code gets executed. */
 //#define USE_2812_INTERRUPTS
 
-#define ABS(x) (((x)>0)?(x):(-(x)))
+#define ABS(x)      (((x) > 0) ? (x):(-(x)))
+#define MIN(a,b)    (((a) < (b)) ? (a) : (b))
+#define MAX(a,b)    (((a) > (b)) ? (a) : (b))
 
 #include "NeoPixelBus.h"
 
@@ -85,10 +87,12 @@ NeoPixelBus::NeoPixelBus(uint16_t n, uint8_t p, uint8_t t, uint8_t* pixelBuf, ui
 {
     _bitBufferSize = NeoPixelBus::CalculateI2sBufferSize(_countPixels * colorChannels(_flagsPixels));
     
-    if (_pixels)
+    if (!_pixels || !_i2sBlock)
     {
-        memset(_pixels, 0, _sizePixels);
+        return;
     }
+    
+    memset(_pixels, 0, _sizePixels);
     ExternalMemory();
 }
 
@@ -102,10 +106,11 @@ NeoPixelBus::NeoPixelBus(uint16_t n, uint8_t p, uint8_t t) :
     _pixels = (uint8_t *)malloc(_sizePixels);
     _i2sBlock = (uint8_t *)malloc(_bitBufferSize);
     
-    if (_pixels)
+    if (!_pixels || !_i2sBlock)
     {
-        memset(_pixels, 0, _sizePixels);
+        return;
     }
+    memset(_pixels, 0, _sizePixels);
 }
 
 NeoPixelBus::~NeoPixelBus() 
@@ -117,6 +122,8 @@ NeoPixelBus::~NeoPixelBus()
         if (_i2sBlock)
             free(_i2sBlock);
     }
+    
+    /* freeing slc queue items not implemented yet. will cause a few bytes of non-free'd data */
 }
 
 void NeoPixelBus::Begin(void) 
@@ -145,15 +152,43 @@ void NeoPixelBus::Begin(void)
     SET_PERI_REG_MASK(SLC_RX_DSCR_CONF, SLC_INFOR_NO_REPLACE|SLC_TOKEN_NO_REPLACE);
     CLEAR_PERI_REG_MASK(SLC_RX_DSCR_CONF, SLC_RX_FILL_EN|SLC_RX_EOF_MODE | SLC_RX_FILL_MODE);
 
-    /* prepare linked DMA descriptors, having EOF set for all */
+    /* how many bytes still ned to be transmitted via I2S */
+    int remain = _bitBufferSize;
+    struct slc_queue_item *prev = &_i2sBufDescOut;
+    
+    /* prepare linked DMA descriptors, having EOF set for all. limit datalen to 12 bits */
     _i2sBufDescOut.owner = 1;
     _i2sBufDescOut.eof = 1;
     _i2sBufDescOut.sub_sof = 0;
-    _i2sBufDescOut.datalen = _bitBufferSize;
-    _i2sBufDescOut.blocksize = _bitBufferSize;
+    _i2sBufDescOut.datalen = MIN((1<<12) - 1, remain);
+    _i2sBufDescOut.blocksize = _i2sBufDescOut.datalen;
     _i2sBufDescOut.buf_ptr = (uint32_t)_i2sBlock;
     _i2sBufDescOut.unused = 0;
     _i2sBufDescOut.next_link_ptr = (uint32_t)&_i2sBufDescLatch;
+    
+    remain = _bitBufferSize - _i2sBufDescOut.datalen;
+    
+    /* datalen is 12 bit max, so we need extra blocks */
+    while(remain)
+    {
+        struct slc_queue_item *extra = (struct slc_queue_item *)malloc(sizeof(struct slc_queue_item));
+        
+        /* append another link block */
+        prev->next_link_ptr = (uint32_t)extra;
+        
+        /* another buffer */
+        extra->owner = 1;
+        extra->eof = 1;
+        extra->sub_sof = 0;
+        extra->datalen = MIN((1<<12) - 1, remain);
+        extra->blocksize = extra->datalen;
+        extra->buf_ptr = (uint32_t)&_i2sBlock[_bitBufferSize - remain];
+        extra->unused = 0;
+        extra->next_link_ptr = (uint32_t)&_i2sBufDescLatch;
+        
+        remain -= extra->datalen;
+        prev = extra;
+    }
 
     /* this zero-buffer block implements the latch/reset signal */
     _i2sBufDescLatch.owner = 1;
@@ -234,7 +269,7 @@ void NeoPixelBus::SyncWait(void)
     /* poll for SLC_RX_EOF_DES_ADDR getting set to the buffer with pixel data */
     WRITE_PERI_REG(SLC_RX_EOF_DES_ADDR, 0);
     
-    while (READ_PERI_REG(SLC_RX_EOF_DES_ADDR) != (uint32_t)&_i2sBufDescOut)
+    while (READ_PERI_REG(SLC_RX_EOF_DES_ADDR) != (uint32_t)&_i2sBufDescLatch)
     {
     }
     
@@ -319,6 +354,11 @@ void NeoPixelBus::UpdatePixelColor(
     uint8_t b,
     uint8_t w) 
 {
+    if (!_pixels)
+    {
+        return;
+    }
+    
     Dirty();
 
     uint8_t *p = &_pixels[n * colorChannels()];
@@ -352,6 +392,11 @@ void NeoPixelBus::UpdatePixelColor(
 // Query color from previously-set pixel (returns packed 32-bit RGB value)
 RgbwColor NeoPixelBus::GetPixelColor(uint16_t n) const 
 {
+    if (!_pixels)
+    {
+        return RgbwColor(0);
+    }
+    
     if (n < _countPixels) 
     {
         RgbwColor c;
